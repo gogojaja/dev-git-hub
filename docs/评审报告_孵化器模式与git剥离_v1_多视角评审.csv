@@ -1,0 +1,9 @@
+perspective,check_id,check_name,status,severity,evidence,confidence
+architect,ARCH-401,孵化器模式定位与职责边界,CHANGES_REQUESTED,medium,EV-303 已隐含孵化器语义须显式声明,high
+architect,ARCH-402,git剥离边界（本地最小保留vs复杂远端剥离）,CHANGES_REQUESTED,medium,EV-306 松耦合集成+EV-301 现状5工具内嵌,high
+architect,ARCH-403,成熟技能独立化评估机制（复用率/独立性/维护成本三判据）,CHANGES_REQUESTED,medium,EV-307 防过度拆分反信号,medium
+security,SEC-401,外部git调用安全（dev-git-hub经工具调用不内嵌凭据）,PASS,high,EV-302 独立项目+AUTH-014,high
+security,SEC-402,孵化器方案移交的敏感数据脱敏,CHANGES_REQUESTED,medium,方案移交前desensitize（铁律#8）,medium
+cost-evolution,COST-401,立项阶段新增的投入成本,CHANGES_REQUESTED,medium,EV-304已有role-project-init可升级复用,high
+cost-evolution,COST-402,独立化运营收益（每项目自管减少本库膨胀）,PASS,medium,EV-305 项目组合生命周期标准,medium
+cost-evolution,COST-403,孵化器只出方案不落地的边界收益,CHANGES_REQUESTED,medium,明确职责防本库膨胀+交接机制,high

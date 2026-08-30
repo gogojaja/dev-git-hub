@@ -1,0 +1,52 @@
+[
+  {
+    "id": "EV-501",
+    "claim": "本项目已有隔离基础：multi_project_isolation.md 5 层隔离（Git/运行时/服务/配置/全局资产注册）+ role-program-mgmt 项目群协同（三层治理/单一信息源/Program Board 决策）——「独立项目维护」机制有现成框架可扩展",
+    "source": ".trae/skills/references/multi_project_isolation.md + role-program-mgmt/SKILL.md",
+    "tier": "T1",
+    "cross_check": 1,
+    "access_date": "2026-08-30",
+    "timeliness": "stable",
+    "confidence": "high"
+  },
+  {
+    "id": "EV-502",
+    "claim": "dev-git-hub 已独立成仓库（AUTH-014，本地 git 仓库 + hub/origin/mirror 三远端 + .gitignore 隔离敏感），须保持完整性与独立性——本项目维护它时不可混入本项目仓库",
+    "source": "/Volumes/BR256G/dev-git-hub/（独立仓库已验证）",
+    "tier": "T1",
+    "cross_check": 1,
+    "access_date": "2026-08-30",
+    "timeliness": "stable",
+    "confidence": "high"
+  },
+  {
+    "id": "EV-503",
+    "claim": "行业实践（polyrepo）：多独立仓库每个项目自含版本/依赖/CI/文档（GitHub 官方多仓库实践、微服务仓库拆分）——独立项目维护不混内容（不子模块嵌套/不 symlink 共享源）是标准多仓库协同。单一信息源原则：治理/审计/标准跨项目共享经 references/ 引用而非复制",
+    "source": "GitHub 多仓库协作实践 + monorepo vs polyrepo 决策（行业标准）",
+    "tier": "T1",
+    "cross_check": 1,
+    "access_date": "2026-08-30",
+    "timeliness": "stable",
+    "confidence": "high"
+  },
+  {
+    "id": "EV-504",
+    "claim": "PMI 项目组合治理：独立项目由各自治理（项目治理<项目群<组合），本项目维护 dev-git-hub 属「跨仓库协同」而非「合并」——协同经「独立仓库+引用登记+交叉调用」，隔离经「各自 .gitignore/各自台账/各自发布链」",
+    "source": "PMI 项目组合管理 + role-program-mgmt 三层治理模型（EV-501 同源）",
+    "tier": "T2",
+    "cross_check": 1,
+    "access_date": "2026-08-30",
+    "timeliness": "stable",
+    "confidence": "medium"
+  },
+  {
+    "id": "EV-505",
+    "claim": "反信号（防过度工程）：若独立项目间共享代码过多 → 应评估子模块/公共库；若隔离过严导致维护成本高 → 应合并；「完全独立 + 引用协同」需明确：共享标准跨项目引用、私有实现各自独立、维护动作以各仓库根为工作目录",
+    "source": "DORA 反信号 + EV-307（防过度拆分）同源",
+    "tier": "T2",
+    "cross_check": 0,
+    "access_date": "2026-08-30",
+    "timeliness": "stable",
+    "confidence": "medium"
+  }
+]

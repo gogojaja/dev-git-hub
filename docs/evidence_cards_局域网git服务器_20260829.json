@@ -1,0 +1,72 @@
+[
+  {
+    "id": "EV-201",
+    "claim": "现状：仓库双远端 origin(GitHub:443) + mirror(Gitee)；GitHub 网络不稳（多次 30s 超时 + 真实IP 回退）；今日 17 次提交 10 次同质化、频繁远端推送重试，形成往返浪费",
+    "source": "git remote -v + 台账/32_镜像同步记录.csv + 本会话复盘",
+    "tier": "T1",
+    "cross_check": 1,
+    "access_date": "2026-08-29",
+    "timeliness": "stable",
+    "confidence": "high"
+  },
+  {
+    "id": "EV-202",
+    "claim": "仓库规模适中：.git 15MB / 361 提交 / 2556 对象 / 12 分支——全量克隆副本成本低（一次克隆 ≈15MB），Windows 全量副本完全可行",
+    "source": "du -sh .git + git rev-list --count + git count-objects -vH",
+    "tier": "T1",
+    "cross_check": 1,
+    "access_date": "2026-08-29",
+    "timeliness": "stable",
+    "confidence": "high"
+  },
+  {
+    "id": "EV-203",
+    "claim": "本机（Mac mini）已具备服务器条件：LAN IP 192.168.3.86、git 2.50.1、/usr/sbin/sshd 已装（SSH 协议可直接做 git-over-SSH 服务，免装额外服务）",
+    "source": "ipconfig getifaddr en0 + git --version + which sshd",
+    "tier": "T1",
+    "cross_check": 1,
+    "access_date": "2026-08-29",
+    "timeliness": "volatile",
+    "confidence": "high"
+  },
+  {
+    "id": "EV-204",
+    "claim": "行业实践（git 官方标准工作流）：bare repository 作为共享中枢（hub），各端 clone 完整副本；git-over-SSH 是标准协议无需额外 daemon 服务",
+    "source": "git-scm.com/docs/gitrepository-layout（git 官方 bare repo 工作流，行业标准）",
+    "tier": "T1",
+    "cross_check": 1,
+    "access_date": "2026-08-29",
+    "timeliness": "stable",
+    "confidence": "high"
+  },
+  {
+    "id": "EV-205",
+    "claim": "行业实践（异地灾备/双副本）：git clone 天然产生全量副本（含全部历史/分支），Windows 端克隆副本 = 自动全量备份；LAN 中枢（快，毫秒级）高频推、WAN 灾备（慢）异步同步——网络拓扑以 LAN 为 Primary 减少远端推送往返",
+    "source": "git clone 语义（git 官方）+ DORA 价值流（wait time 隐藏低效，LAN 消除网络等待）",
+    "tier": "T2",
+    "cross_check": 1,
+    "access_date": "2026-08-29",
+    "timeliness": "stable",
+    "confidence": "medium"
+  },
+  {
+    "id": "EV-206",
+    "claim": "反信号（防过度工程）：局域网单点——若 Mac mini 关机/断网，LAN 服务器不可用；须保留 GitHub/Gitee WAN 双推作为灾备，LAN 仅作日常快速中转非唯一权威",
+    "source": "DORA 反信号（不为度量而度量）+ 本项目已有多工具协同先例",
+    "tier": "T2",
+    "cross_check": 1,
+    "access_date": "2026-08-29",
+    "timeliness": "stable",
+    "confidence": "medium"
+  },
+  {
+    "id": "EV-207",
+    "claim": "Windows 端作为「全量副本」的最佳形态：Windows 定时/事件触发从 LAN 拉取（或 LAN 作为 mirror 推送到 Windows），Windows 复本用于「快速本地访问 + 备份 + 断网可用」；与现有 mirror_push 双推机制并存（LAN 推不替代 GitHub/Gitee 灾备）",
+    "source": "git 分布式语义 + 本项目铁律#7a（外部机器访问须授权）",
+    "tier": "T2",
+    "cross_check": 1,
+    "access_date": "2026-08-29",
+    "timeliness": "stable",
+    "confidence": "medium"
+  }
+]

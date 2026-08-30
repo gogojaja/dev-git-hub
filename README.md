@@ -19,12 +19,21 @@
 ## 二、文件结构
 
 ```
-dev-git-hub/
-  ├── README.md              本文件
-  ├── config.example.yaml    本机环境配置层（IP/路径/密钥，与硬件解耦）
-  ├── install_mac.sh         Mac 建 bare 中枢 + SSH over LAN（本机步骤）
-  ├── install_windows.ps1    Windows 全量克隆副本（Dell/OptiPlex）
-  └── sync_policy.md         同步策略（日常 LAN push + 定期 WAN 灾备 + 反信号）
+dev-git-hub/                    git 基建单一信源（本项目为唯一权威）
+  ├── README.md                 本文件
+  ├── 交接文档.md               跨会话断点 / 工作状态 / 接口契约（DevProjectTeamSkill 与本项目协同锚点）
+  ├── config.example.yaml       本机环境配置层（IP/路径/密钥，与硬件解耦；真实 config.yaml 不入库）
+  ├── install_mac.sh            Mac 建 bare 中枢 + SSH over LAN（本机步骤）
+  ├── install_windows.ps1       Windows 全量克隆副本（Dell/OptiPlex）
+  ├── sync_policy.md            同步策略（日常 LAN push + 定期 WAN 灾备 + 反信号）
+  ├── tools/                    git 复杂远端操作工具（单一信源）
+  │   ├── mirror_push.py        双推（支持 PROJECT_ROOT 环境变量 → 以目标仓库为工作根）
+  │   ├── github_push.py        GitHub 真实 IP 推送（同 PROJECT_ROOT 支持）
+  │   ├── github_ip_refresh.py / check_github_connectivity.py / restore_github_push.sh / _gh_ip_probe.py
+  │   └── load_secret.py        凭据跨平台装载（环境变量 > .secrets > 钥匙串）
+  ├── references/
+  │   └── github_access.md      GitHub 访问异常处理标准
+  └── docs/                     git 基建方案 / 证据卡 / 评审报告（单源，从 DevProjectTeamSkill 交接）
 ```
 
 ## 三、核心技术选型（最小依赖）
@@ -50,6 +59,20 @@ Windows 副本 git pull hub（或直接本地工作）
 - 2 阶段内 LAN push 未成常态 → 撤回，仅保留 WAN 双推
 - Mac mini 长期关机 → 不可行，Windows 副本 + WAN 兜底
 
+## 六、维护接口契约（跨项目协同，单一信源）
+
+**本项目 = git 基建单一信源**（DevProjectTeamSkill 不保留实现，仅引用+代理调用）；**接口信息共享**：
+
+| 接口 | 说明 |
+|------|------|
+| **环境变量 `PROJECT_ROOT` / `DPB_ROOT`** | 本库脚本以此为目标仓库工作根（读其远端/台账）；DevProjectTeamSkill 代理转发时注入其仓库根 |
+| **工具调用** | DevProjectTeamSkill `tools/` 下同名薄封装代理 → 本库 `tools/` 真实实现（参数/命令兼容） |
+| **方案/标准** | git 基建方案/证据卡/评审报告/github_access 标准**以本库 `docs/`+`references/` 为单一信源** |
+| **维护动作** | 后续对本项目维护**经建议方案提供给本项目**，具体执行由本项目独立判断；改动只落本项目仓库 |
+| **协作锚点** | `交接文档.md`（工作断点/阻塞/下一步）跨会话持续刷新 |
+
+> DevProjectTeamSkill 定位为「项目孵化器」：对本项目只产出方案/建议，不代本项目落地；本项目独立判断执行，保持完整性与独立性。
+
 ---
 
-**最后更新**：2026-08-30（初始创建，方案/评审产物见 DevProjectTeamSkill/docs/局域网git服务器方案.md）
+**最后更新**：2026-08-30（完整交接建立：工具/标准/docs 单源迁入 + 交接文档.md + 维护接口契约 §六；初始创建见 git 历史）。本库 `docs/` 下 git 基建方案/证据卡/评审报告为单一信源（DevProjectTeamSkill 侧不保留实现）。

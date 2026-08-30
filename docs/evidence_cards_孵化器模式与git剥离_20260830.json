@@ -1,0 +1,82 @@
+[
+  {
+    "id": "EV-301",
+    "claim": "本项目 git 相关工具共 5 件在 tools/（github_ip_refresh/github_push/mirror_push/check_github_connectivity/restore_github_push.sh）+ references/github_access.md（GitHub 访问异常处理），且 AGENTS.md 命令区大量 git 操作说明——git 基建功能内嵌于技能库，与「本体即技能源码」定位耦合",
+    "source": "git 状态盘点（tools/ + references/ + AGENTS.md）",
+    "tier": "T1",
+    "cross_check": 1,
+    "access_date": "2026-08-30",
+    "timeliness": "stable",
+    "confidence": "high"
+  },
+  {
+    "id": "EV-302",
+    "claim": "独立项目 dev-git-hub 已建（AUTH-014，/Volumes/BR256G/dev-git-hub，7 文件：README/config/install_mac/install_windows/sync_policy），承载 LAN 中枢+Windows 副本+WAN 灾备——git 基建独立化先例已具备，可承接 git 复杂操作",
+    "source": "/Volumes/BR256G/dev-git-hub/ + AUTH-014 授权登记",
+    "tier": "T1",
+    "cross_check": 1,
+    "access_date": "2026-08-30",
+    "timeliness": "stable",
+    "confidence": "high"
+  },
+  {
+    "id": "EV-303",
+    "claim": "本项目定位（AGENTS.md）：『本体即技能源码，不是业务应用。AI Agent 在本仓库的职责是维护技能库本身，不是执行软件项目业务』——已隐含『孵化器』语义（产出技能/方案，非执行业务），但未显式声明『孵化器只出方案不落地』与『成熟技能独立化』机制",
+    "source": "AGENTS.md 项目定位段",
+    "tier": "T1",
+    "cross_check": 1,
+    "access_date": "2026-08-30",
+    "timeliness": "stable",
+    "confidence": "high"
+  },
+  {
+    "id": "EV-304",
+    "claim": "本项目已有 role-project-init（启动阶段：立项/章程/干系人/RACI/问题升级/范围初定/可行性检查/基线初始化，含 check_ready 硬门禁）——『立项前方案调研/可行性分析』能力已部分具备，但缺乏独立『孵化器立项阶段』（方案调研→可行性→孵化决策→交独立项目），当前是内嵌在 role-project-init 的启动环节",
+    "source": ".trae/skills/role-project-init/SKILL.md + 编排器 §4 路由",
+    "tier": "T1",
+    "cross_check": 1,
+    "access_date": "2026-08-30",
+    "timeliness": "stable",
+    "confidence": "high"
+  },
+  {
+    "id": "EV-305",
+    "claim": "PMBOK 7th 启动过程组：项目立项（Initiating）包含『明确目标/干系人/章程/可行性』——『立项前可行性分析』是启动过程组前置；PMI 项目组合管理：从『创意→评估→选中→立项→独立管理』是组合生命周期标准,孵化器模式（incubator pattern）：组织孵化期负责方案/可行性，成熟后转独立运营是常见模式",
+    "source": "PMBOK Guide 7th 启动过程组 + PMI 项目组合管理（行业标准）",
+    "tier": "T2",
+    "cross_check": 1,
+    "access_date": "2026-08-30",
+    "timeliness": "stable",
+    "confidence": "medium"
+  },
+  {
+    "id": "EV-306",
+    "claim": "行业实践（服务化/插件化）：核心系统通过『工具调用』集成外部能力而非内嵌实现——本项目 git 复杂操作由 dev-git-hub 提供（经 MCP/CLI 工具调用），本项目仅保留 git init/status/commit 等最小本地操作,是标准松耦合集成模式",
+    "source": "微服务/插件化架构（行业标准，内嵌 vs 集成决策）",
+    "tier": "T2",
+    "cross_check": 1,
+    "access_date": "2026-08-30",
+    "timeliness": "stable",
+    "confidence": "medium"
+  },
+  {
+    "id": "EV-307",
+    "claim": "反信号（防过度拆分）：工具若被内部高频直接使用（非复杂远端操作），剥离会引入跨项目调用往返——需区分『本地最小 git（保留）』vs『复杂远端 git（剥离）』边界；成熟技能独立化不能一刀切，需按『复用率/独立性/维护成本』三判据逐项评估",
+    "source": "DORA 反信号（不为拆分而拆分）+ 本库多工具协同先例",
+    "tier": "T2",
+    "cross_check": 1,
+    "access_date": "2026-08-30",
+    "timeliness": "stable",
+    "confidence": "medium"
+  },
+  {
+    "id": "EV-308",
+    "claim": "当前立项阶段缺口：无独立『孵化器立项』流程（方案调研→可行性五维→孵化决策→移交清单），导致『本库对其他项目产出方案后无移交机制』『成熟技能独立化无评估流程』——需将 role-project-init 的立项能力升级为『孵化器立项阶段』（既有 role-project-init 保留给业务项目，新增孵化器立项流程）",
+    "source": "本会话需求分析 + EV-304 现状",
+    "tier": "T1",
+    "cross_check": 1,
+    "access_date": "2026-08-30",
+    "timeliness": "stable",
+    "confidence": "high"
+  }
+]

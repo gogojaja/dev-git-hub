@@ -1,0 +1,8 @@
+perspective,check_id,check_name,status,severity,evidence,confidence
+architect,ARCH-301,Mac mini 做 LAN git 服务器方案合理性,CHANGES_REQUESTED,medium,EV-203 已具备SSH条件 + EV-204 bare repo标准工作流,high
+architect,ARCH-302,Windows 全量副本拓扑（clone=自动备份）,CHANGES_REQUESTED,medium,EV-202 仓库15MB全量副本可行 + EV-205 git clone语义,high
+architect,ARCH-303,LAN 与 WAN 双推并存结构,CHANGES_REQUESTED,medium,EV-206 单点风险须保留WAN灾备,high
+security,SEC-301,LAN git 服务访问控制（SSH 密钥/仅局域网）,CHANGES_REQUESTED,medium,SSH over LAN须密钥认证+禁密码登录,high
+security,SEC-302,Windows 副本数据保护（项目铁律#7a外部机器）,CHANGES_REQUESTED,medium,EV-207 外部机器访问须授权+备份,high
+cost-evolution,COST-301,实施成本（SSH配置+bare仓库+Windows克隆）,PASS,high,复用现有SSH/git零额外采购,high
+cost-evolution,COST-302,减少远端推送的收益量化,CHANGES_REQUESTED,medium,EV-201 今日多次推送重试→LAN推消除网络等待,medium

@@ -1,0 +1,8 @@
+perspective,check_id,check_name,status,severity,evidence,confidence
+architect,ARCH-501,独立仓库维护模式可行性（polyrepo协同不合并）,CHANGES_REQUESTED,medium,EV-503 GitHub多仓库实践+EV-504 PMI组合治理,high
+architect,ARCH-502,共享标准跨项目引用vs私有实现隔离,CHANGES_REQUESTED,medium,EV-501 单一信息源原则+EV-505 反信号,high
+architect,ARCH-503,维护动作以各仓库根为工作目录边界,CHANGES_REQUESTED,medium,EV-502 完整性独立性,high
+security,SEC-501,跨项目敏感信息隔离（各自.gitignore/台账）,CHANGES_REQUESTED,medium,EV-502 dev-git-hub已隔离敏感,high
+security,SEC-502,独立项目访问授权边界（铁律#7a）,CHANGES_REQUESTED,medium,EV-502 AUTH-014授权+外部访问留痕,medium
+cost-evolution,COST-501,独立维护投入成本（各自发布链/台账）,PASS,medium,复用现有发布/审计工具零新增,high
+cost-evolution,COST-502,协同机制收益（防膨胀+可演进+隔离）,CHANGES_REQUESTED,medium,EV-503 polyrepo标准+孵化器定位,high
