@@ -37,6 +37,13 @@ import re
 import subprocess
 import sys
 
+# ---- [M1 剥离增强] 支持 PROJECT_ROOT 环境变量（以目标仓库为工作根，默认/兜底自身根） ----
+def _resolve_root(default_root):
+    # 优先级：PROJECT_ROOT 环境变量 > 脚本自身根
+    env = os.environ.get("PROJECT_ROOT") or os.environ.get("DPB_ROOT")
+    if env and os.path.isdir(env):
+        return env
+    return default_root
 ROOT_DEFAULT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 ROOT = _resolve_root(ROOT_DEFAULT)
 
