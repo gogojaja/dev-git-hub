@@ -38,11 +38,12 @@ def probe_tls(ip: str, host: str = "github.com", timeout: int = 8):
 
 
 def probe_reachability(ip: str, host: str = "github.com") -> str:
-    """curl 可达性探测，返回 HTTP 状态码字符串或 ERR。跨平台：Windows 用 curl.exe，其它平台用 curl。"""
+    """curl 可达性探测，返回 HTTP 状态码字符串或 ERR。跨平台：Windows 用 curl.exe，其它平台用 curl。
+    -o 用 os.devnull（Windows=NUL / macOS·Linux=/dev/null），避免在非 Windows 生成垃圾文件。"""
     curl = "curl.exe" if os.name == "nt" else "curl"
     try:
         r = subprocess.run(
-            [curl, "-s", "-o", "NUL", "-w", "%{http_code}",
+            [curl, "-s", "-o", os.devnull, "-w", "%{http_code}",
              "--connect-timeout", "6", "--resolve", "%s:443:%s" % (host, ip),
              "https://%s" % host],
             capture_output=True, text=True, timeout=12,
@@ -50,6 +51,21 @@ def probe_reachability(ip: str, host: str = "github.com") -> str:
         return r.stdout.strip() or "ERR"
     except Exception:
         return "ERR"
+
+
+def system_github_ips(limit: int = 4) -> list:
+    """系统解析 github.com 当前 A 记录（本机 DNS 干净时为真实 IP 来源；
+    DoH 端点境内多不可达，系统解析器是兜底候选源）。返回去重 IPv4 列表。"""
+    ips, seen = [], set()
+    try:
+        for info in socket.getaddrinfo("github.com", 443, socket.AF_INET, proto=socket.IPPROTO_TCP):
+            ip = info[4][0]
+            if ip not in seen:
+                seen.add(ip)
+                ips.append(ip)
+    except OSError:
+        pass
+    return ips[:limit]
 
 
 def read_github_ips(max_candidates: int = 12) -> list:
@@ -73,11 +89,16 @@ def read_github_ips(max_candidates: int = 12) -> list:
 def probe_best_github_ip(max_candidates: int = 8, timeout: int = 8):
     """返回首个「可达+证书合法」的 github.com IP；无则返回 None（命中即短路，不串行探测全部）。
 
+    候选来源：docs/github_ip_records.csv 登记 IP + 系统解析当前 A 记录（去重合并）。
     双重探测：TLS 证书合法（SNI=github.com）仅为前提，还必须 curl 实际 HTTP 请求成功
     （返回真实状态码 2xx/3xx/4xx）——仅 TCP/TLS 握手成功但路由会丢弃真实请求的 IP
     视为不可用（如 20.205.243.166 曾出现 TLS 可握手、push 却 Connection reset）。
     """
-    for ip in read_github_ips(max_candidates):
+    candidates = read_github_ips(max_candidates)
+    for ip in system_github_ips():
+        if ip not in candidates:
+            candidates.append(ip)
+    for ip in candidates:
         tcp, cert_ok, _ = probe_tls(ip, timeout=timeout)
         if not (tcp and cert_ok):
             continue

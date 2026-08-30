@@ -10,16 +10,20 @@ mirror_push.py — 国内镜像同步（地缘风险对冲）双推工具
 - 认证失败（Authentication failed / 403 / 等）→ 对目标 remote 置「阻断」状态，
   后续运行**直接跳过不再重试**，也不写 32 台账（凭据留痕不入库）。
   仅当凭据更新（token 哈希变化）或显式 --force/--unblock 才解除。
+- 远端分叉（non-fast-forward / [rejected] / fetch first）→ 单独归类「diverged」，
+  **不置 auth 阻断**（避免把分叉误判为凭据失效），置短冷却并输出处置指引：
+  集成远端（git pull --rebase）或用 --git-force 以本地权威源覆盖远端。
 - 网络/其他失败（连接重置/超时/DNS 等）→ **默认自动真实 IP 回退**（P-001：
-  origin/github 先试上次成功 IP 缓存，失效则探测候选「可达+TLS 证书合法」IP 绑定推送，
+  origin/github **一律走真实 IP**，先试上次成功 IP 缓存，失效则探测候选「可达+TLS 证书合法」IP 绑定推送，
   `--no-realip` 关闭）→ 仍失败才置「冷却」状态（默认 15 分钟），
   冷却期内跳过不重试（避免 flapping 时每次提交都重试并污染台账）。
 - 无新提交（Everything up-to-date）→ 视为「已同步」，跳过且不写台账，
   避免每次提交后钩子自动双推时再留痕造成脏工作区。
 - 状态存于 .secrets/mirror_push_state.json（gitignore，不入库）。
 - 退出码：0=全部成功；1=存在本次尝试失败；2=全部被阻断/冷却跳过（未尝试）。
-- 辅助命令：--force（无视阻断/冷却立即尝试）、--unblock <remote|all>（解除）、
-  --status（查看当前状态）。
+- 辅助命令：--force（无视阻断/冷却立即尝试）、--git-force（在 --force 基础上，
+  将 --force 透传给 git push，用于本地为权威源时覆盖分叉远端）、
+  --unblock <remote|all>（解除）、--status（查看当前状态）。
 
 安全约定（铁律 #3 A 级）：
 - 国内/境外 token 只经环境变量或 .secrets/ 提供，脚本从 GITEE_TOKEN/GITEE_USER 等读取，
@@ -70,14 +74,6 @@ def _resolve_root(default_root):
     return default_root
 ROOT_DEFAULT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 ROOT = _resolve_root(ROOT_DEFAULT)
-
-# ---- [M1 剥离增强] 支持 PROJECT_ROOT 环境变量（以目标仓库为工作根，默认/兜底自身根） ----
-def _resolve_root(default_root):
-    # 优先级：PROJECT_ROOT 环境变量 > 脚本自身根
-    env = os.environ.get("PROJECT_ROOT") or os.environ.get("DPB_ROOT")
-    if env and os.path.isdir(env):
-        return env
-    return default_root
 LEDGER = os.path.join(ROOT, "台账", "32_镜像同步记录.csv")
 STATE_FILE = os.path.join(ROOT, ".secrets", "mirror_push_state.json")
 BOM = b"\xef\xbb\xbf"
@@ -98,6 +94,8 @@ NET_FAIL_RE = re.compile(
     r"Failed to connect|Could not connect|Connection was reset|Recv failure|timed? out"
     r"|Could not resolve host|Name or service not known|network is unreachable|Connection refused"
     r"|Operation timed out|Temporary failure in name resolution", re.IGNORECASE)
+# 远端分叉（non-fast-forward）：既非凭据也非网络问题，单独归类，避免误判为 auth 阻断/网络冷却。
+NONFF_RE = re.compile(r"non-fast-forward|\[rejected\]|fetch first", re.IGNORECASE)
 
 # remote -> (user_env, token_env)
 TOKEN_ENV = {
@@ -111,6 +109,7 @@ TOKEN_ENV = {
 
 def _run(cmd, extra_env=None, timeout=None):
     env = dict(os.environ)
+    env.setdefault("GIT_TERMINAL_PROMPT", "0")  # 非交互环境禁止凭据弹问（避免挂起/误判为 auth）
     if extra_env:
         env.update(extra_env)
     try:
@@ -148,11 +147,17 @@ def _resolve_credentials(remote):
     token = os.environ.get(token_var) or os.environ.get(token_var.lower())
     if token and not user:
         user = os.environ.get("GITEE_USER") or os.environ.get("GITHUB_USER")
+    if token and not user:
+        # 兜底：GitHub PAT 用 x-access-token 作用户名即可（token 作密码）；
+        # 其他托管（如 Gitee）需真实用户名，缺失时由 .secrets/<remote>_user 或环境变量提供。
+        if remote in ("origin", "github"):
+            user = "x-access-token"
     return user, token
 
 
-def _push_one(remote, branch):
-    """推送单个 remote；token 经 insteadOf 注入，不持久化。返回 (ok, msg, elapsed_sec)。"""
+def _push_one(remote, branch, git_force=False):
+    """推送单个 remote；token 经 insteadOf 注入，不持久化。
+    返回 (ok, msg, elapsed, out_full)；msg 为末行摘要，out_full 供失败分类。"""
     user, token = _resolve_credentials(remote)
 
     extra_args = []
@@ -170,7 +175,7 @@ def _push_one(remote, branch):
            "-c", "http.connectTimeout=12",
            "-c", "http.lowSpeedLimit=1000",
            "-c", "http.lowSpeedTime=30",
-           "push", remote, branch]
+           "push"] + (["--force"] if git_force else []) + [remote, branch]
     start = datetime.datetime.now()
     res = _run(cmd, timeout=40)
     elapsed = (datetime.datetime.now() - start).total_seconds()
@@ -180,12 +185,16 @@ def _push_one(remote, branch):
         if s:
             out = out.replace(s, "***")
     last = out.splitlines()[-1] if out else ""
-    return ok, (last if last else ("成功" if ok else "失败")), elapsed
+    return ok, (last if last else ("成功" if ok else "失败")), elapsed, out
 
 
 def _classify_failure(msg):
-    """把 git push 失败信息归类为 auth / network / other，供熔断器决策。"""
+    """把 git push 失败信息归类为 diverged / auth / network / other，供熔断器决策。
+    注意：分叉检测须在 auth 之前——non-fast-forward 报错文本常与凭据字样同现，
+    仅看末行会漏判（分叉输出末行往往是 help hint）。传入完整输出更可靠。"""
     m = msg or ""
+    if NONFF_RE.search(m):
+        return "diverged"
     if AUTH_FAIL_RE.search(m):
         return "auth"
     if NET_FAIL_RE.search(m):
@@ -215,14 +224,16 @@ def _write_ip_cache(ip):
         pass
 
 
-def _real_ip_push(remote, branch, token, user, cached_ip):
-    """真实 IP 推送 github 类 remote。先试缓存 IP（免探测），失败则探测候选；
+def _real_ip_push(remote, branch, token, user, cached_ip, git_force=False):
+    """真实 IP 推送 github 类 remote（GitHub 一律走真实 IP，不再直连域名）。
+    先试缓存 IP（免探测），失败则探测候选；
     探测失败自动刷新 github.com 真实 IP 后重试一次。
-    返回 (ok, msg, elapsed)；ok=False 时 msg 为最终失败信息。"""
+    返回 (ok, msg, elapsed, out_full)。"""
     if cached_ip:
-        ok, msg, el = gp._push_with_ip(cached_ip, branch, token, user, timeout=15)
+        ok, msg, el, out = gp._push_with_ip(cached_ip, branch, token, user, timeout=15,
+                                            git_force=git_force)
         if ok:
-            return True, "PUSH_OK %s (cached): %s" % (cached_ip, msg), el
+            return True, "PUSH_OK %s (cached): %s" % (cached_ip, msg), el, out
         print("[真实IP] 缓存 IP %s 失效：%s" % (cached_ip, msg))
     print("[真实IP] %s 探测 github.com 真实 IP ..." % remote)
     ip = gp.probe_best_github_ip()
@@ -233,12 +244,22 @@ def _real_ip_push(remote, branch, token, user, cached_ip):
             gp._run([sys.executable, refresh_script, "--doh"], timeout=60)
             ip = gp.probe_best_github_ip()
     if not ip:
-        return False, "无可用 github.com 真实 IP（刷新后仍全部不可达）", 0.0
-    ok, msg, el = gp._push_with_ip(ip, branch, token, user, timeout=40)
+        # 兜底：探测口径(curl GET)比 push 更严（路由间歇丢包），仍**绑定真实 IP**（系统解析所得），
+        # 以 push 自身为最终探测，绝不裸域名直连——符合「GitHub 全用真实 IP」机制约定。
+        last_msg = ""
+        for sip in gp.system_github_ips()[:2]:
+            print("[真实IP] 探测无果，兜底绑定系统解析 IP %s 直接推送（以 push 为探测）..." % sip)
+            ok, msg, el, out = gp._push_with_ip(sip, branch, token, user, timeout=30, git_force=git_force)
+            if ok:
+                _write_ip_cache(sip)
+                return True, "PUSH_OK %s (system-ip): %s" % (sip, msg), el, out
+            last_msg = "%s: %s" % (sip, msg)
+        return False, "无可用 github.com 真实 IP（探测/刷新/系统IP兜底均失败）%s" % (" | " + last_msg if last_msg else ""), 0.0, last_msg
+    ok, msg, el, out = gp._push_with_ip(ip, branch, token, user, timeout=40, git_force=git_force)
     if ok:
         _write_ip_cache(ip)
-        return True, "PUSH_OK %s: %s" % (ip, msg), el
-    return False, "IP=%s: %s" % (ip, msg), el
+        return True, "PUSH_OK %s: %s" % (ip, msg), el, out
+    return False, "IP=%s: %s" % (ip, msg), el, out
 
 
 def _token_hash(token):
@@ -400,6 +421,7 @@ def main():
     args = [a for a in argv if not a.startswith("-")]
     verify = "--verify" in argv
     force = "--force" in argv
+    git_force = "--git-force" in argv
     status_only = "--status" in argv
     unblock = "--unblock" in argv
     github_realip = True
@@ -440,7 +462,7 @@ def main():
         user, token = _resolve_credentials(remote)
 
         # ---- 熔断：认证失败阻断（凭据更新后自动解除）----
-        if st.get("blocked") and not force:
+        if st.get("blocked") and not (force or git_force):
             cur_hash = _token_hash(token)
             if token and st.get("token_hash") and cur_hash != st.get("token_hash"):
                 print("[解除] %s：检测到凭据变更，自动解除阻断" % remote)
@@ -452,7 +474,7 @@ def main():
                 continue
 
         # ---- 熔断：网络/其他失败冷却期 ----
-        if st.get("cooldown_until") and not force:
+        if st.get("cooldown_until") and not (force or git_force):
             try:
                 cu = datetime.datetime.strptime(st["cooldown_until"], "%Y-%m-%d %H:%M:%S")
             except Exception:
@@ -468,14 +490,14 @@ def main():
         # ---- 实际推送 ----
         attempted += 1
         url = _run(["git", "remote", "get-url", remote]).stdout.strip()
-        # origin/github 直走真实 IP（GitHub 总不可达，全用真实 IP 推送）
+        # origin/github 一律走真实 IP（GitHub 域名直连不可靠，全用真实 IP 推送）
         if remote in ("origin", "github"):
-            ok, msg, elapsed = _real_ip_push(
+            ok, msg, elapsed, out_full = _real_ip_push(
                 remote=remote, branch=branch, token=token, user=user,
-                cached_ip=_read_ip_cache())
+                cached_ip=_read_ip_cache(), git_force=git_force)
             ok = bool(ok)
         else:
-            ok, msg, elapsed = _push_one(remote, branch)
+            ok, msg, elapsed, out_full = _push_one(remote, branch, git_force=git_force)
         sid = "SYNC-%s-%03d" % (now.strftime("%Y%m%d"), seq)
         seq += 1
 
@@ -489,7 +511,7 @@ def main():
                          "成功", "%.1f" % elapsed, msg])
             print("[成功] %s：%s (%.1fs)" % (remote, msg, elapsed))
         else:
-            cls = _classify_failure(msg)
+            cls = _classify_failure(out_full or msg)
             if cls == "auth":
                 # 凭据问题：阻断重试，不入 32 台账（铁律：凭据失败留痕不入库，避免污染工作区）
                 failed += 1
@@ -498,6 +520,18 @@ def main():
                                  "message": "凭据认证失败（需提供新 token）", "updated_at": now_str}
                 print("[阻断] %s：凭据认证失败，已停止重试。请更新凭据（.secrets/<remote>_token 或环境变量）后自动解除，"
                       "或 --force 立即重试，或 --unblock 手动解除。" % remote)
+            elif cls == "diverged":
+                # 远端分叉：非凭据/网络问题。不入 auth 阻断；置短冷却并给出处置指引。
+                failed += 1
+                state[remote] = {"blocked": False, "reason": cls,
+                                 "message": "远端分叉(non-fast-forward)",
+                                 "cooldown_until": (now + datetime.timedelta(seconds=NETWORK_COOLDOWN)).strftime("%Y-%m-%d %H:%M:%S"),
+                                 "updated_at": now_str}
+                rows.append([sid, now_str, head[:12], remote, _mask(url),
+                             "失败", "%.1f" % elapsed, "远端分叉：先 git pull --rebase %s %s，或本地为权威源时 --git-force 覆盖" % (remote, branch)])
+                print("[分叉] %s：本地与远端历史不一致（non-fast-forward）。" % remote)
+                print("  处置：git fetch %s && git merge %s/%s（集成远端）" % (remote, remote, branch))
+                print("  或（本地为权威源，覆盖远端）：mirror_push.py --git-force %s" % remote)
             else:
                 # ---- origin/github 已直走真实 IP，网络失败直接冷却 ----
                 state[remote] = {"blocked": False, "reason": cls, "message": msg,

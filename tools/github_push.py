@@ -21,6 +21,9 @@
     py -3.11 tools/github_push.py --dry-run           # 仅探测并打印将用 IP，不实际 push（回归测试）
     py -3.11 tools/github_push.py --keep-proxy        # 保留环境代理（默认解除）
     py -3.11 tools/github_push.py --timeout 5         # 单 IP TLS 探测超时秒（默认 8）
+    py -3.11 tools/github_push.py --force             # git push --force（本地权威源覆盖分叉远端）
+
+ 机制约定：GitHub 推送一律走真实 IP（候选 IP 探测 + curloptResolve 绑定），不再直连域名。
 
 凭据（铁律 #3 A 级）：
     与 mirror_push.py 一致：GITHUB_TOKEN 经 .secrets/github_token 或环境变量提供，
@@ -48,12 +51,6 @@ ROOT_DEFAULT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 ROOT = _resolve_root(ROOT_DEFAULT)
 
 # ---- [M1 剥离增强] 支持 PROJECT_ROOT 环境变量（以目标仓库为工作根，默认/兜底自身根） ----
-def _resolve_root(default_root):
-    # 优先级：PROJECT_ROOT 环境变量 > 脚本自身根
-    env = os.environ.get("PROJECT_ROOT") or os.environ.get("DPB_ROOT")
-    if env and os.path.isdir(env):
-        return env
-    return default_root
 LEDGER = os.path.join(ROOT, "台账", "32_镜像同步记录.csv")
 # 铁律 #8：32 台账入库前对真实 IP 脱敏，避免 B 级门禁拦截与敏感泄露。
 _IP_RE = re.compile(r'(\d{1,3}\.){3}\d{1,3}')
@@ -63,14 +60,15 @@ def _mask_ip(s):
     return _IP_RE.sub('xxx.xxx.xxx.xxx', s) if isinstance(s, str) else s
 
 try:
-    from _gh_ip_probe import probe_best_github_ip
+    from _gh_ip_probe import probe_best_github_ip, system_github_ips
 except ImportError:
     sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-    from _gh_ip_probe import probe_best_github_ip
+    from _gh_ip_probe import probe_best_github_ip, system_github_ips
 
 
 def _run(cmd, extra_env=None, timeout=None):
     env = dict(os.environ)
+    env.setdefault("GIT_TERMINAL_PROMPT", "0")  # 非交互环境禁止凭据弹问（避免挂起/误判）
     if extra_env:
         env.update(extra_env)
     try:
@@ -166,10 +164,13 @@ def _clear_proxy():
         os.environ.pop(k, None)
 
 
-def _push_with_ip(ip, branch, token, user, timeout=40):
-    """用指定 IP 绑定推送 origin（token 经 insteadOf 注入，不持久化）。返回 (ok, msg, elapsed)。"""
+def _push_with_ip(ip, branch, token, user, timeout=40, git_force=False):
+    """用指定 IP 绑定推送 origin（token 经 insteadOf 注入，不持久化）。
+    GitHub 一律走真实 IP（curloptResolve 绑定 github.com:443）。
+    返回 (ok, msg, elapsed, out_full)；msg 为末行摘要，out_full 供失败分类。"""
     extra_args = []
     if token:
+        user = user or "x-access-token"
         url = _run(["git", "remote", "get-url", "origin"]).stdout.strip()
         if "://" in url:
             proto, rest = url.split("://", 1)
@@ -183,7 +184,7 @@ def _push_with_ip(ip, branch, token, user, timeout=40):
            "-c", "http.connectTimeout=12",
            "-c", "http.lowSpeedLimit=1000",
            "-c", "http.lowSpeedTime=30",
-           "push", "origin", branch]
+           "push"] + (["--force"] if git_force else []) + ["origin", branch]
     start = datetime.datetime.now()
     res = _run(cmd, timeout=timeout)
     elapsed = (datetime.datetime.now() - start).total_seconds()
@@ -193,7 +194,7 @@ def _push_with_ip(ip, branch, token, user, timeout=40):
         if s:
             out = out.replace(s, "***")
     last = out.splitlines()[-1] if out else ""
-    return ok, (last if last else ("成功" if ok else "失败")), elapsed
+    return ok, (last if last else ("成功" if ok else "失败")), elapsed, out
 
 
 def main(argv=None):
@@ -203,6 +204,8 @@ def main(argv=None):
     ap.add_argument("--keep-proxy", action="store_true", help="保留环境代理（默认解除）")
     ap.add_argument("--dry-run", action="store_true", help="仅探测并打印将用 IP，不实际 push")
     ap.add_argument("--timeout", type=int, default=8, help="单 IP TLS 探测超时秒（默认 8）")
+    ap.add_argument("--force", action="store_true",
+                    help="git push --force（本地为权威源、远端分叉时覆盖远端；谨慎使用）")
     args = ap.parse_args(argv)
 
     if not args.keep_proxy:
@@ -223,8 +226,15 @@ def main(argv=None):
             print("[失败] 未找到 github_ip_refresh.py，无法自动刷新。")
             return 1
     if not ip:
-        print("[失败] 刷新后仍无可用 github.com 真实 IP。请检查网络或手动核验 sites.ipaddress.com/github.com。")
-        return 1
+        # 兜底：探测口径(curl GET)比 push 更严（路由间歇丢包），绑定系统解析真实 IP，
+        # 以 push 为最终探测，绝不裸域名直连。
+        sys_ips = system_github_ips()
+        if sys_ips:
+            print("[兜底] 探测无果，改用系统解析真实 IP %s（以 push 为探测）" % sys_ips[0])
+            ip = sys_ips[0]
+        else:
+            print("[失败] 刷新后仍无可用 github.com 真实 IP。请检查网络或手动核验 sites.ipaddress.com/github.com。")
+            return 1
 
     print("[2/3] 将使用 IP: %s （绑定 github.com:443）" % ip)
     url = _run(["git", "remote", "get-url", "origin"]).stdout.strip()
@@ -234,7 +244,7 @@ def main(argv=None):
         return 0
 
     user, token = _resolve_token()
-    ok, msg, elapsed = _push_with_ip(ip, branch, token, user)
+    ok, msg, elapsed, out = _push_with_ip(ip, branch, token, user, git_force=args.force)
     now = datetime.datetime.now()
     now_str = now.strftime("%Y-%m-%d %H:%M:%S")
     sid = "SYNC-%s-%03d" % (now.strftime("%Y%m%d"), _next_seq())
@@ -252,6 +262,9 @@ def main(argv=None):
     _append_ledger([sid, now_str, head[:12], "origin", _mask(url),
                     "失败", "%.1f" % elapsed, "真实IP推送失败 IP=%s: %s" % (ip, msg)])
     print("[失败] IP=%s 推送失败：%s" % (ip, msg))
+    if "non-fast-forward" in out or "[rejected]" in out:
+        print("       分叉：本地与远端历史不一致。确认本地为权威源后：tools/github_push.py --force")
+        print("       或先集成远端：git fetch origin && git merge origin/%s" % branch)
     print("       提示：可尝试 `py -3.11 tools/github_ip_refresh.py --doh --write-hosts` 覆盖 hosts 后重试。")
     _commit_ledger_via_agent_loop()
     return 1
