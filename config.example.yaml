@@ -1,0 +1,24 @@
+# dev-git-hub 本机环境配置层（与硬件/机器解耦的关键）
+# 用法：复制为 config.yaml 并按本机实际修改；换机器只改此文件，不改项目结构。
+
+hub:
+  machine_ip: "192.168.x.x"           # Mac 中枢 LAN IP（本机 ipconfig getifaddr en0 查询后按实填入 config.yaml）
+  hub_user: "gogo"                  # Mac 登录用户名（SSH user）
+  hub_path: "~/git/hub"             # bare 仓库父目录（相对 home）
+  hub_name: "dev-project-team-skill.git"   # 第一个 bare 仓库（可扩展多个）
+  ssh_port: 22                      # sshd 默认端口
+
+windows:
+  machine: "Dell OptiPlex 7010 Micro"
+  win_user: "YourWindowsUser"       # Windows 用户名（占位，按实填）
+  workspace: "C:\\git-repos"        # Windows 端仓库工作目录
+
+wan:
+  origin: "https://github.com/gogojaja/DevProjectTeamSkill.git"
+  mirror: "https://gitee.com/gogojaja/DevProjectTeamSkill.git"
+  sync_cadence: "weekly"            # WAN 灾备同步频次（daily/weekly/on-demand）
+
+# 反信号阈值（与 DevProjectTeamSkill 铁律#16 对齐）
+retro_signals:
+  lan_push_grace_period_phases: 2   # LAN push 成常态化观察期（阶段数）
+  wan_retry_limit: 2                # WAN 连续失败重试上限（超过触发冷却）
