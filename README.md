@@ -54,6 +54,18 @@ git push hub main
 Windows 副本 git pull hub（或直接本地工作）
 ```
 
+### 调用示例
+
+#### 使用 `mirror_push.py` 双推 GitHub + Gitee
+```bash
+python /path/to/dev-git-hub/tools/mirror_push.py
+```
+
+#### 使用 `github_push.py` 推送至 GitHub
+```bash
+python /path/to/dev-git-hub/tools/github_push.py
+```
+
 ## 五、反信号（防过度工程）
 
 - 2 阶段内 LAN push 未成常态 → 撤回，仅保留 WAN 双推
@@ -70,8 +82,55 @@ Windows 副本 git pull hub（或直接本地工作）
 | **方案/标准** | git 基建方案/证据卡/评审报告/github_access 标准**以本库 `docs/`+`references/` 为单一信源** |
 | **维护动作** | 后续对本项目维护**经建议方案提供给本项目**，具体执行由本项目独立判断；改动只落本项目仓库 |
 | **协作锚点** | `交接文档.md`（工作断点/阻塞/下一步）跨会话持续刷新 |
+| **调用示例** | 其他项目可通过环境变量指定目标仓库：`PROJECT_ROOT=/path/to/other-repo python /path/to/dev-git-hub/tools/mirror_push.py` |
 
 > DevProjectTeamSkill 定位为「项目孵化器」：对本项目只产出方案/建议，不代本项目落地；本项目独立判断执行，保持完整性与独立性。
+
+### 其他项目调用示例
+
+#### 1. 基本调用（对当前项目）
+```bash
+# 双推 GitHub + Gitee
+python /path/to/dev-git-hub/tools/mirror_push.py
+
+# 仅推 GitHub（真实 IP 机制）
+python /path/to/dev-git-hub/tools/github_push.py
+
+# 强制推送（覆盖分叉）
+python /path/to/dev-git-hub/tools/mirror_push.py --git-force
+```
+
+#### 2. 跨项目调用（指定目标仓库）
+```bash
+# 对其他项目执行双推
+export PROJECT_ROOT=/path/to/other-project
+python /path/to/dev-git-hub/tools/mirror_push.py
+
+# 对其他项目仅推 GitHub
+export PROJECT_ROOT=/path/to/other-project
+python /path/to/dev-git-hub/tools/github_push.py --force
+```
+
+#### 3. DevProjectTeamSkill 薄封装代理调用
+```bash
+# DevProjectTeamSkill 通过代理转发调用
+# 代理脚本会自动注入 PROJECT_ROOT 环境变量
+python /path/to/DevProjectTeamSkill/tools/mirror_push.py --target-repo /path/to/other-project
+```
+
+#### 4. 参数说明
+- `--force`: 跳过熔断/冷却状态立即重试
+- `--git-force`: 强制推送（覆盖分叉远端）
+- `--verify`: 验证本地与远端一致性
+- `--status`: 查看当前阻断/冷却状态
+- `--unblock`: 解除阻断/冷却状态
+
+---
+
+**注意**：调用前请确保目标仓库已配置：
+1. 有效的 `.secrets/github_token` 和 `.secrets/gitee_token`
+2. 正确的 remote 配置（origin/mirror）
+3. 凭据权限足够（repo/projects 权限）
 
 ---
 
