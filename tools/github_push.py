@@ -214,8 +214,16 @@ def main(argv=None):
     print("[1/3] 探测 github.com 可达+证书合法 IP ...")
     ip = probe_best_github_ip(timeout=args.timeout)
     if not ip:
-        print("[失败] 候选 IP 全部不可达或证书非法。请先运行：")
-        print("       py -3.11 tools/github_ip_refresh.py --doh   # 动态刷新候选IP")
+        print("[刷新] 候选 IP 全部不可达，自动刷新 github.com 真实 IP ...")
+        refresh_script = os.path.join(os.path.dirname(os.path.abspath(__file__)), "github_ip_refresh.py")
+        if os.path.isfile(refresh_script):
+            _run([sys.executable, refresh_script, "--doh"], timeout=60)
+            ip = probe_best_github_ip(timeout=args.timeout)
+        else:
+            print("[失败] 未找到 github_ip_refresh.py，无法自动刷新。")
+            return 1
+    if not ip:
+        print("[失败] 刷新后仍无可用 github.com 真实 IP。请检查网络或手动核验 sites.ipaddress.com/github.com。")
         return 1
 
     print("[2/3] 将使用 IP: %s （绑定 github.com:443）" % ip)

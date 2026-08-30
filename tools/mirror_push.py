@@ -216,17 +216,24 @@ def _write_ip_cache(ip):
 
 
 def _real_ip_push(remote, branch, token, user, cached_ip):
-    """真实 IP 回退推送 github 类 remote。先试缓存 IP（免探测），失败则探测候选。
+    """真实 IP 推送 github 类 remote。先试缓存 IP（免探测），失败则探测候选；
+    探测失败自动刷新 github.com 真实 IP 后重试一次。
     返回 (ok, msg, elapsed)；ok=False 时 msg 为最终失败信息。"""
     if cached_ip:
         ok, msg, el = gp._push_with_ip(cached_ip, branch, token, user, timeout=15)
         if ok:
             return True, "PUSH_OK %s (cached): %s" % (cached_ip, msg), el
-        print("[回退] 缓存 IP %s 失效：%s" % (cached_ip, msg))
-    print("[回退] %s 网络失败，探测 github.com 真实 IP ..." % remote)
+        print("[真实IP] 缓存 IP %s 失效：%s" % (cached_ip, msg))
+    print("[真实IP] %s 探测 github.com 真实 IP ..." % remote)
     ip = gp.probe_best_github_ip()
     if not ip:
-        return False, "无可用 github.com 真实 IP（候选全部不可达）", 0.0
+        print("[真实IP] 候选 IP 全部不可达，自动刷新 github.com 真实 IP ...")
+        refresh_script = os.path.join(os.path.dirname(os.path.abspath(__file__)), "github_ip_refresh.py")
+        if os.path.isfile(refresh_script):
+            gp._run([sys.executable, refresh_script, "--doh"], timeout=60)
+            ip = gp.probe_best_github_ip()
+    if not ip:
+        return False, "无可用 github.com 真实 IP（刷新后仍全部不可达）", 0.0
     ok, msg, el = gp._push_with_ip(ip, branch, token, user, timeout=40)
     if ok:
         _write_ip_cache(ip)
@@ -461,7 +468,14 @@ def main():
         # ---- 实际推送 ----
         attempted += 1
         url = _run(["git", "remote", "get-url", remote]).stdout.strip()
-        ok, msg, elapsed = _push_one(remote, branch)
+        # origin/github 直走真实 IP（GitHub 总不可达，全用真实 IP 推送）
+        if remote in ("origin", "github"):
+            ok, msg, elapsed = _real_ip_push(
+                remote=remote, branch=branch, token=token, user=user,
+                cached_ip=_read_ip_cache())
+            ok = bool(ok)
+        else:
+            ok, msg, elapsed = _push_one(remote, branch)
         sid = "SYNC-%s-%03d" % (now.strftime("%Y%m%d"), seq)
         seq += 1
 
@@ -485,28 +499,15 @@ def main():
                 print("[阻断] %s：凭据认证失败，已停止重试。请更新凭据（.secrets/<remote>_token 或环境变量）后自动解除，"
                       "或 --force 立即重试，或 --unblock 手动解除。" % remote)
             else:
-                # ---- 网络类失败：默认自动真实 IP 回退（P-001，--no-realip 可关）----
-                ok2 = False
-                if github_realip and remote in ("origin", "github"):
-                    print("[回退] %s 网络失败，尝试真实 IP 推送 ..." % remote)
-                    ok2, msg2, elapsed2 = _real_ip_push(
-                        remote=remote, branch=branch, token=token, user=user,
-                        cached_ip=_read_ip_cache())
-                    if ok2:
-                        state.pop(remote, None)
-                        rows.append([sid, now_str, head[:12], remote, _mask(url),
-                                     "成功", "%.1f" % elapsed2, msg2])
-                        print("[成功] %s：真实IP回退 %s (%.1fs)" % (remote, msg2, elapsed2))
-                        continue
-                if not ok2:
-                    state[remote] = {"blocked": False, "reason": cls, "message": msg,
-                                     "cooldown_until": (now + datetime.timedelta(seconds=NETWORK_COOLDOWN)).strftime("%Y-%m-%d %H:%M:%S"),
-                                     "updated_at": now_str}
-                    failed += 1
-                    rows.append([sid, now_str, head[:12], remote, _mask(url),
-                                 "失败", "%.1f" % elapsed, msg])
-                    print("[失败] %s：%s (%.1fs)" % (remote, msg, elapsed))
-                    print("  详情：%s" % msg)
+                # ---- origin/github 已直走真实 IP，网络失败直接冷却 ----
+                state[remote] = {"blocked": False, "reason": cls, "message": msg,
+                                 "cooldown_until": (now + datetime.timedelta(seconds=NETWORK_COOLDOWN)).strftime("%Y-%m-%d %H:%M:%S"),
+                                 "updated_at": now_str}
+                failed += 1
+                rows.append([sid, now_str, head[:12], remote, _mask(url),
+                             "失败", "%.1f" % elapsed, msg])
+                print("[失败] %s：%s (%.1fs)" % (remote, msg, elapsed))
+                print("  详情：%s" % msg)
 
     _save_state(state)
     if rows:
