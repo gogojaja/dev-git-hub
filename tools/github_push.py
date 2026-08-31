@@ -175,6 +175,10 @@ def _push_with_ip(ip, branch, token, user, timeout=40, git_force=False):
         if "://" in url:
             proto, rest = url.split("://", 1)
             host = rest.split("/", 1)[0]
+            # 健壮性：剥离 remote URL 中可能已内嵌的 user:pass@，避免双凭据畸形 URL
+            # （git 会把残留段误判为端口号报 "Port number was not a decimal"）。
+            if "@" in host:
+                host = host.split("@", 1)[1]
             auth = ("%s:" % user if user else "") + token + "@"
             instead = "%s://%s%s/" % (proto, auth, host)
             orig = "%s://%s/" % (proto, host)
