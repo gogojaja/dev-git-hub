@@ -83,7 +83,7 @@ _IP_RE = re.compile(r'(\d{1,3}\.){3}\d{1,3}')
 
 def _mask_ip(s):
     return _IP_RE.sub('xxx.xxx.xxx.xxx', s) if isinstance(s, str) else s
-DEFAULT_REMOTES = ["origin", "mirror"]
+DEFAULT_REMOTES = ["origin", "mirror", "hub"]
 NETWORK_COOLDOWN = 15 * 60  # 秒：网络/其他失败后的冷却期
 
 AUTH_FAIL_RE = re.compile(
