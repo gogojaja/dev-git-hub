@@ -83,7 +83,7 @@ _IP_RE = re.compile(r'(\d{1,3}\.){3}\d{1,3}')
 
 def _mask_ip(s):
     return _IP_RE.sub('xxx.xxx.xxx.xxx', s) if isinstance(s, str) else s
-DEFAULT_REMOTES = ["origin", "mirror", "hub"]
+DEFAULT_REMOTES = ["origin", "mirror", "mac"]
 NETWORK_COOLDOWN = 15 * 60  # 秒：网络/其他失败后的冷却期
 
 AUTH_FAIL_RE = re.compile(
@@ -155,13 +155,21 @@ def _resolve_credentials(remote):
     return user, token
 
 
+
+def _is_ssh_remote(remote):
+    """检测 remote 是否为 SSH 协议（ssh:// 或 git@ 格式）。SSH 远端跳过 token 注入。"""
+    url = _run(["git", "remote", "get-url", remote]).stdout.strip()
+    return url.startswith("ssh://") or url.startswith("git@")
+
+
 def _push_one(remote, branch, git_force=False):
     """推送单个 remote；token 经 insteadOf 注入，不持久化。
     返回 (ok, msg, elapsed, out_full)；msg 为末行摘要，out_full 供失败分类。"""
-    user, token = _resolve_credentials(remote)
+    ssh = _is_ssh_remote(remote)
+    user, token = (None, None) if ssh else _resolve_credentials(remote)
 
     extra_args = []
-    if token:
+    if token and not ssh:
         url = _run(["git", "remote", "get-url", remote]).stdout.strip()
         if "://" in url:
             proto, rest = url.split("://", 1)
@@ -175,13 +183,17 @@ def _push_one(remote, branch, git_force=False):
             orig = "%s://%s/" % (proto, host)
             extra_args = ["-c", "url.%s.insteadOf=%s" % (instead, orig)]
 
-    cmd = ["git", *extra_args,
-           "-c", "http.connectTimeout=12",
-           "-c", "http.lowSpeedLimit=1000",
-           "-c", "http.lowSpeedTime=30",
-           "push"] + (["--force"] if git_force else []) + [remote, branch]
+    if ssh:
+        cmd = ["git", *extra_args,
+               "push"] + (["--force"] if git_force else []) + [remote, branch]
+    else:
+        cmd = ["git", *extra_args,
+               "-c", "http.connectTimeout=12",
+               "-c", "http.lowSpeedLimit=1000",
+               "-c", "http.lowSpeedTime=30",
+               "push"] + (["--force"] if git_force else []) + [remote, branch]
     start = datetime.datetime.now()
-    res = _run(cmd, timeout=40)
+    res = _run(cmd, timeout=60 if ssh else 40)
     elapsed = (datetime.datetime.now() - start).total_seconds()
     ok = res.returncode == 0
     out = (res.stdout + res.stderr).strip()
@@ -494,14 +506,15 @@ def main():
         # ---- 实际推送 ----
         attempted += 1
         url = _run(["git", "remote", "get-url", remote]).stdout.strip()
-        # origin/github 一律走真实 IP（GitHub 域名直连不可靠，全用真实 IP 推送）
-        if remote in ("origin", "github"):
+        # origin/github 且为 HTTPS 时走真实 IP；SSH 远端直接推送
+        ssh = _is_ssh_remote(remote)
+        if remote in ("origin", "github") and not ssh:
             ok, msg, elapsed, out_full = _real_ip_push(
                 remote=remote, branch=branch, token=token, user=user,
                 cached_ip=_read_ip_cache(), git_force=git_force)
             ok = bool(ok)
         else:
-            ok, msg, elapsed, out_full = _push_one(remote, branch, git_force=git_force)
+            ok, msg, elapsed, out_full = _push_one(remote, git_force=git_force)
         sid = "SYNC-%s-%03d" % (now.strftime("%Y%m%d"), seq)
         seq += 1
 

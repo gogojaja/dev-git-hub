@@ -218,6 +218,35 @@ def main(argv=None):
     branch = args.branch or _branch()
     head = _head()
 
+    # SSH 远端直接推送，无需 IP 探测和 token
+    url = _run(["git", "remote", "get-url", "origin"]).stdout.strip()
+    is_ssh = url.startswith("ssh://") or url.startswith("git@")
+    if is_ssh:
+        print("[SSH] origin 为 SSH 协议，直接推送（无需 IP 探测/token）")
+        now = datetime.datetime.now()
+        now_str = now.strftime("%Y-%m-%d %H:%M:%S")
+        sid = "SYNC-%s-%03d" % (now.strftime("%Y%m%d"), _next_seq())
+        cmd = ["git", "push"] + (["--force"] if args.force else []) + ["origin", branch]
+        start = datetime.datetime.now()
+        res = _run(cmd, timeout=60)
+        elapsed = (datetime.datetime.now() - start).total_seconds()
+        if res.returncode == 0:
+            out = (res.stdout + res.stderr).strip()
+            if "up-to-date" in out:
+                print("[已同步] %s 已是最新（无新提交）" % branch)
+                return 0
+            _append_ledger([sid, now_str, head[:12], "origin", _mask(url),
+                            "成功", "%.1f" % elapsed, "SSH推送成功"])
+            print("PUSH_OK SSH  (%.1fs)" % elapsed)
+            _commit_ledger_via_agent_loop()
+            return 0
+        else:
+            out = (res.stdout + res.stderr).strip()
+            _append_ledger([sid, now_str, head[:12], "origin", _mask(url),
+                            "失败", "%.1f" % elapsed, "SSH推送失败"])
+            print("[失败] SSH 推送失败：%s" % out.splitlines()[-1] if out else "unknown")
+            return 1
+
     print("[1/3] 探测 github.com 可达+证书合法 IP ...")
     ip = probe_best_github_ip(timeout=args.timeout)
     if not ip:
