@@ -36,7 +36,41 @@ dev-git-hub/                    git 基建单一信源（本项目为唯一权�
   └── docs/                     git 基建方案 / 证据卡 / 评审报告（单源，从 DevProjectTeamSkill 交接）
 ```
 
-## 三、核心技术选型（最小依赖）
+## 三、自动三推钩子（post-commit）
+
+本项目提供 git post-commit 钩子，实现提交后自动三推（origin GitHub + mirror Gitee + hub LAN bare）。
+
+### 安装
+
+```bash
+# 方式一：运行安装脚本（设置全局 core.hooksPath）
+bash /path/to/dev-git-hub/hooks/install.sh
+
+# 方式二：手动设置
+git config --global core.hooksPath /path/to/dev-git-hub/hooks
+```
+
+### 跳过推送
+
+在 commit message 中加入 `[skip-push]` 标记：
+
+```bash
+git commit -m "feat: some change [skip-push]"
+```
+
+### 日志
+
+推送日志写入 `<仓库>/.git/mirror_push.log`。
+
+### 文件结构
+
+```
+hooks/
+  ├── post-commit    钩子脚本（自动三推，[skip-push] 跳过）
+  └── install.sh     安装脚本（设置 core.hooksPath）
+```
+
+## 四、核心技术选型（最小依赖）
 
 - **git over SSH + bare repository**：已装 `/usr/sbin/sshd`，零新增依赖（15MB 单仓无需 Gitea/GitLab）
 - **git clone 即全量备份**：Windows 克隆副本自动含全部历史/分支

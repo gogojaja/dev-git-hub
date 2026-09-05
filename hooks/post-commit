@@ -1,0 +1,32 @@
+#!/bin/bash
+# post-commit hook: 自动三推 (origin + mirror + hub LAN bare)
+# 归属：dev-git-hub（git 基建单一信源）
+# 安装：运行 hooks/install.sh 或手动 git config core.hooksPath <本目录>
+# 跳过：commit message 含 [skip-push] 时跳过本次推送
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+
+# 通过 _hub_proxy 动态解析 mirror_push.py（三级：环境变量 > 同级目录约定 > .hub_root）
+MIRROR_PUSH_SCRIPT="$REPO_ROOT/tools/mirror_push.py"
+LOG_FILE="${REPO_ROOT}/.git/mirror_push.log"
+
+# 检测跳过标记
+if git log -1 --pretty=%B | grep -q "\[skip-push\]"; then
+    echo "[$(date)] 检测到 [skip-push] 标记，跳过自动三推" >> "$LOG_FILE"
+    exit 0
+fi
+
+# 检查 mirror_push.py 是否存在
+if [ ! -f "$MIRROR_PUSH_SCRIPT" ]; then
+    echo "[$(date)] 警告: mirror_push.py 不存在: $MIRROR_PUSH_SCRIPT" >> "$LOG_FILE"
+    exit 0
+fi
+
+# 执行三推（后台运行，不阻塞提交）
+echo "[$(date)] 开始自动三推..." >> "$LOG_FILE"
+python "$MIRROR_PUSH_SCRIPT" >> "$LOG_FILE" 2>&1 &
+disown
+
+# 记录触发
+echo "[$(date)] 自动三推已触发，后台执行中" >> "$LOG_FILE"
